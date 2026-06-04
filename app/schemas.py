@@ -23,6 +23,8 @@ class MetricResponse(BaseModel):
     unique_visitors: int
     active_visitors: int = 0
     staff_excluded: int = 0
+    customers: int = 0
+    staff_count: int = 0
     current_queue: int = 0
     conversion_rate: float
     avg_dwell_per_zone_ms: Dict[str, float]
@@ -79,6 +81,13 @@ class AnomaliesResponse(BaseModel):
 
     window_start: str
     window_end: str
+
+
+class CameraStatus(BaseModel):
+    camera_id: str
+    role: str  # ENTRY | ZONE | BILLING | UNKNOWN
+    active: bool
+    last_event_ts: Optional[str] = None
 
 
 class HealthStoreInfo(BaseModel):

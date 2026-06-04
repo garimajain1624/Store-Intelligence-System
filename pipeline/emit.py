@@ -5,7 +5,7 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 
 def load_jsonl(path: Path) -> List[Dict[str, Any]]:
@@ -238,16 +238,39 @@ def generate_events_from_tracks(
 
                 # Check if visitor had a purchase correlation
                 is_converted = False
+                matched_txn_dt = None
                 for txn in pos_txns:
                     if txn["store_id"] == store_id:
                         txn_dt = parse_pos_time(txn)
                         # Correlation rule: visitor joined billing queue in the 5 minutes before transaction
                         if start_dt <= txn_dt <= start_dt + timedelta(minutes=5):
                             is_converted = True
+                            matched_txn_dt = txn_dt
                             break
 
-                # If they leave without POS correlation and are not staff, they abandoned!
-                if not is_converted and not is_staff:
+                if is_converted:
+                    # Emit PURCHASE event at the transaction time
+                    session_seq += 1
+                    purchase_iso = matched_txn_dt.strftime("%Y-%m-%dT%H:%M:%SZ") if matched_txn_dt else end_iso
+                    events.append({
+                        "event_id": str(uuid.uuid4()),
+                        "store_id": store_id,
+                        "camera_id": cam_id,
+                        "visitor_id": vid,
+                        "event_type": "PURCHASE",
+                        "timestamp": purchase_iso,
+                        "zone_id": "BILLING",
+                        "dwell_ms": duration_ms,
+                        "is_staff": is_staff,
+                        "confidence": confidence,
+                        "metadata": {
+                            "queue_depth": other_active,
+                            "sku_zone": None,
+                            "session_seq": session_seq
+                        }
+                    })
+                elif not is_staff:
+                    # If they leave without POS correlation and are not staff, they abandoned!
                     session_seq += 1
                     events.append({
                         "event_id": str(uuid.uuid4()),

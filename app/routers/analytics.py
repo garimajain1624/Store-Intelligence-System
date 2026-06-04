@@ -19,6 +19,7 @@ from app.models import IngestedEvent
 from app.schemas import (
     AnomalyItem,
     AnomaliesResponse,
+    CameraStatus,
     FunnelResponse,
     HeatmapResponse,
     MetricResponse,
@@ -106,6 +107,49 @@ def _get_pos_for_store(store_id: str) -> List[datetime]:
 def _get_store_events(db: Session, store_id: str) -> List[IngestedEvent]:
     rows = db.execute(select(IngestedEvent).where(IngestedEvent.store_id == store_id)).scalars().all()
     return list(rows)
+
+
+def _get_camera_status(events: List[IngestedEvent], latest_ts_iso: Optional[str]) -> List[CameraStatus]:
+    """Build per-camera activity status. Active = seen within 30min of latest event."""
+    cam_last: Dict[str, str] = {}
+    for e in events:
+        if e.camera_id:
+            prev = cam_last.get(e.camera_id)
+            if prev is None or e.timestamp > prev:
+                cam_last[e.camera_id] = e.timestamp
+
+    if not cam_last:
+        return []
+
+    latest_dt = _parse_iso(latest_ts_iso) if latest_ts_iso else datetime.now(timezone.utc)
+    threshold = timedelta(minutes=30)
+
+    def _role(cam_id: str) -> str:
+        c = cam_id.lower()
+        if "entry" in c:
+            return "ENTRY"
+        elif "billing" in c:
+            return "BILLING"
+        elif "zone" in c:
+            n = ""
+            for part in c.split("_"):
+                if part.isdigit():
+                    n = part
+                    break
+            return f"ZONE-{n}" if n else "ZONE"
+        return "UNKNOWN"
+
+    result: List[CameraStatus] = []
+    for cam_id, last_ts in sorted(cam_last.items()):
+        last_dt = _parse_iso(last_ts)
+        active = (latest_dt - last_dt) <= threshold
+        result.append(CameraStatus(
+            camera_id=cam_id,
+            role=_role(cam_id),
+            active=active,
+            last_event_ts=last_ts,
+        ))
+    return result
 
 
 def _latest_timestamp_iso(events: List[IngestedEvent]) -> Optional[str]:
@@ -394,6 +438,8 @@ def store_metrics(id: str, request: Request, db: Session = Depends(get_db)) -> M
         unique_visitors=unique_visitors,
         active_visitors=active_visitors,
         staff_excluded=staff_excluded,
+        customers=unique_visitors,
+        staff_count=staff_excluded,
         current_queue=current_queue,
         conversion_rate=conversion_rate,
         avg_dwell_per_zone_ms=avg_dwell_per_zone_ms,

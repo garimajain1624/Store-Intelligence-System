@@ -1,11 +1,52 @@
-# Store Intelligence API
+# Store Intelligence System
 
-This repo contains a containerized REST API for “offline store intelligence”: ingest structured behavioural events and expose real-time store metrics (conversion, dwell, queue/abandonment, funnels, heatmap, and operational anomaly hints).
+Real-time computer vision retail analytics. Ingest events from CCTV cameras, track footfall, conversion funnels, billing queues, and zone heatmaps through a live dashboard.
 
-## Quickstart (5 commands)
+## Architecture
 
-1. Start the API:
+```
+CCTV Cameras (MP4 / RTSP / Webcam)
+        │
+        ▼
+  pipeline/detect.py       ← YOLOv8 + ByteTrack (person detection per camera)
+        │
+        ▼
+  pipeline/tracker.py      ← Cross-camera Re-ID + staff detection
+        │
+        ▼
+  pipeline/emit.py         ← Behavioural event generation + POS correlation
+        │
+        ▼
+  POST /events/ingest      ← FastAPI REST API (SQLite storage)
+        │
+        ▼
+  GET  /dashboard          ← Real-time SSE dashboard (browser)
+```
+
+**Events produced per camera:**
+
+| Camera Role | Events |
+|---|---|
+| Entry cam   | `ENTRY`, `EXIT`, `REENTRY` |
+| Zone cam    | `ZONE_ENTER`, `ZONE_DWELL`, `ZONE_EXIT` |
+| Billing cam | `BILLING_QUEUE_JOIN`, `BILLING_QUEUE_ABANDON`, `PURCHASE` |
+
+## Quickstart
+
+### 1. Run the full offline pipeline (all stores)
+```powershell
+# Windows — processes ALL subfolders recursively (entry + zone + billing cameras)
+.\pipeline\run_all.ps1 -StoreRoot "data" -StoreId "STORE_BLR_002"
+```
+
 ```bash
+# Linux / macOS
+bash pipeline/run.sh "data" "STORE_BLR_002" "./out/events.json"
+```
+
+### 2. Start the API
+```bash
+# With Docker
 docker compose up --build
 ```
 

@@ -24,8 +24,9 @@ class TrackRow:
 
 
 def _iter_video_files(input_dir: Path) -> List[Path]:
+    """Recursively find all video files under input_dir (handles nested store folders)."""
     exts = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm"}
-    files = [p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in exts]
+    files = [p for p in input_dir.rglob("*") if p.is_file() and p.suffix.lower() in exts]
     files.sort()
     return files
 
