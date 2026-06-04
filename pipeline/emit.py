@@ -9,16 +9,24 @@ from typing import Any, Dict, List, Tuple
 
 
 def load_jsonl(path: Path) -> List[Dict[str, Any]]:
-    events: List[Dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            obj = json.loads(line)
-            if not isinstance(obj, dict):
-                raise ValueError("Each JSONL line must be a JSON object")
-            events.append(obj)
+        content = f.read().strip()
+    if not content:
+        return []
+        
+    if content.startswith("["):
+        # It's a regular JSON array
+        return json.loads(content)
+        
+    events: List[Dict[str, Any]] = []
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        obj = json.loads(line)
+        if not isinstance(obj, dict):
+            raise ValueError("Each JSONL line must be a JSON object")
+        events.append(obj)
     return events
 
 
@@ -421,7 +429,14 @@ def main(argv: List[str] | None = None) -> int:
     output_obj: Any = events if not args.wrap else {"events": events}
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(output_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    
+    if output_path.suffix.lower() == ".jsonl":
+        with output_path.open("w", encoding="utf-8") as f:
+            for event in events:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    else:
+        output_path.write_text(json.dumps(output_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+        
     print(json.dumps({"ok": True, "events": len(events), "output": str(output_path)}))
     return 0
 
