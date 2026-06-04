@@ -1,0 +1,55 @@
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ─── Large Data / Video Files ─────────────────────────────
+data/Store_1/
+data/Store_2/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+
+# ─── ML Model Weights ─────────────────────────────────────
+*.pt
+*.pth
+*.onnx
+*.pb
+*.h5
+*.pkl
+
+# ─── Databases ────────────────────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ─── Output / Generated Files ─────────────────────────────
+out/
+*.jsonl
+
+# ─── IDE / OS ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# ─── Environment & Secrets ────────────────────────────────
+.env
+.env.*
+*.key

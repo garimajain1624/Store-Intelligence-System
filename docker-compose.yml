@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+pysqlite:////data/app.db
+      - "POS_CSV_PATH=/resources/POS - sample transactionsb1e826f.csv"
+    volumes:
+      - ./data:/data
+      - D:/project:/resources:ro
+    restart: unless-stopped
