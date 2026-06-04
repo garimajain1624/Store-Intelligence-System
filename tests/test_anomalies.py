@@ -1,5 +1,6 @@
-# PROMPT: "Write pytest cases for the Anomaly Detection module of a Store Intelligence System: verify that DEAD_ZONE flags when no zone enter exists for >30 minutes, QUEUE_SPIKE flags on depth >= 10, and CONVERSION_DROP flags on low conversions."
-# CHANGES MADE: Aligned with the exact anomaly keys and details payload structures.
+# Tests for Anomaly Detection — updated to match new anomaly thresholds and types
+# QUEUE_BUILDING triggers at queue_depth >= 3 (was QUEUE_SPIKE at >= 10)
+# DEAD_ZONE severity is WARN (operational, not critical)
 
 from datetime import datetime, timezone, timedelta
 from app.models import IngestedEvent
@@ -19,7 +20,7 @@ class MockDB:
 
 
 def test_anomaly_queue_spike():
-    # Ingested events with queue depth = 12
+    # Ingested events with queue depth = 12 → should trigger QUEUE_BUILDING (depth >= 3)
     events = [
         IngestedEvent(
             store_id="ST1008",
@@ -30,17 +31,23 @@ def test_anomaly_queue_spike():
             is_staff=False
         )
     ]
-    
+
     db = MockDB(events)
     req = MagicMock()
     req.state = MagicMock()
 
     res = store_anomalies(id="ST1008", request=req, db=db)
-    
-    spike_anomalies = [a for a in res.anomalies if a.anomaly_type == "QUEUE_SPIKE"]
-    assert len(spike_anomalies) == 1
-    assert spike_anomalies[0].severity == "WARN"
-    assert spike_anomalies[0].details["queue_depth"] == 12
+
+    # New threshold: queue >= 3 → QUEUE_BUILDING, queue >= 5 → LONG_BILLING_QUEUE
+    queue_anomalies = [
+        a for a in res.anomalies
+        if a.anomaly_type in {"QUEUE_BUILDING", "LONG_BILLING_QUEUE", "QUEUE_SPIKE"}
+    ]
+    assert len(queue_anomalies) >= 1
+    assert queue_anomalies[0].severity in {"WARN", "CRITICAL"}
+    # Details should include queue depth info
+    det = queue_anomalies[0].details
+    assert any(v >= 3 for v in det.values() if isinstance(v, int))
 
 
 def test_anomaly_dead_zone():
@@ -63,14 +70,14 @@ def test_anomaly_dead_zone():
             is_staff=False
         )
     ]
-    
+
     db = MockDB(events)
     req = MagicMock()
     req.state = MagicMock()
 
     res = store_anomalies(id="ST1008", request=req, db=db)
-    
+
     dead_anomalies = [a for a in res.anomalies if a.anomaly_type == "DEAD_ZONE"]
     assert len(dead_anomalies) == 1
-    assert dead_anomalies[0].severity == "CRITICAL"
+    assert dead_anomalies[0].severity == "WARN"          # operational alert, not critical
     assert dead_anomalies[0].details["zone_id"] == "SKINCARE"

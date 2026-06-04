@@ -1,10 +1,9 @@
 from __future__ import annotations
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field
 
 
 class IngestError(BaseModel):
@@ -28,6 +27,9 @@ class MetricResponse(BaseModel):
     current_queue: int = 0
     conversion_rate: float
     avg_dwell_per_zone_ms: Dict[str, float]
+    avg_dwell_ms: float = 0.0            # overall avg dwell across all zones
+    most_visited_zone: Optional[str] = None
+    repeat_visitors: int = 0             # visitors seen in ≥ 2 cameras
     queue_depth: int
     abandonment_rate: float
 
@@ -85,9 +87,26 @@ class AnomaliesResponse(BaseModel):
 
 class CameraStatus(BaseModel):
     camera_id: str
-    role: str  # ENTRY | ZONE | BILLING | UNKNOWN
+    role: str                            # ENTRY | ZONE | BILLING | UNKNOWN
     active: bool
     last_event_ts: Optional[str] = None
+    seconds_since_last_event: Optional[int] = None
+
+
+class HourlyBucket(BaseModel):
+    hour: int           # 0–23
+    label: str          # "12 PM"
+    visitor_count: int
+
+
+class PeakHourResponse(BaseModel):
+    store_id: str
+    peak_hour: int
+    peak_hour_label: str
+    peak_count: int
+    hourly_buckets: List[HourlyBucket]
+    window_start: str
+    window_end: str
 
 
 class HealthStoreInfo(BaseModel):
@@ -102,12 +121,6 @@ class HealthResponse(BaseModel):
 
 
 def to_uuid_str(value: str) -> str:
-    """
-    Best-effort uuid string validation.
-
-    If a UUID parse fails, we still return the original input so callers can decide.
-    """
-
     try:
         return str(uuid.UUID(value))
     except Exception:
@@ -116,4 +129,3 @@ def to_uuid_str(value: str) -> str:
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-

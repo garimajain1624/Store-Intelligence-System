@@ -204,7 +204,7 @@ def generate_events_from_tracks(
                     }
                 })
 
-            elif "billing" in cam_id.lower():
+            elif "bill" in cam_id.lower():
                 # Count current occupants in the billing zone to get queue depth
                 other_active = 0
                 for other_rows in visitor_tracks.values():
@@ -225,7 +225,7 @@ def generate_events_from_tracks(
                     "visitor_id": vid,
                     "event_type": "BILLING_QUEUE_JOIN",
                     "timestamp": start_iso,
-                    "zone_id": "BILLING",
+                    "zone_id": "CHECKOUT",
                     "dwell_ms": 0,
                     "is_staff": is_staff,
                     "confidence": confidence,
@@ -236,20 +236,27 @@ def generate_events_from_tracks(
                     }
                 })
 
-                # Check if visitor had a purchase correlation
+                # ── Purchase detection ────────────────────────────────────────
+                # Priority 1: POS CSV correlation
                 is_converted = False
                 matched_txn_dt = None
                 for txn in pos_txns:
                     if txn["store_id"] == store_id:
                         txn_dt = parse_pos_time(txn)
-                        # Correlation rule: visitor joined billing queue in the 5 minutes before transaction
                         if start_dt <= txn_dt <= start_dt + timedelta(minutes=5):
                             is_converted = True
                             matched_txn_dt = txn_dt
                             break
 
-                if is_converted:
-                    # Emit PURCHASE event at the transaction time
+                # Priority 2: Dwell heuristic — stayed ≥ 30s at billing = purchase
+                # (realistic: quick browse-and-leave < 30s = abandon; staying = purchase intent)
+                PURCHASE_DWELL_THRESHOLD_MS = 30_000
+                if not is_converted and not is_staff:
+                    if duration_ms >= PURCHASE_DWELL_THRESHOLD_MS:
+                        is_converted = True
+
+                if is_converted and not is_staff:
+                    # Emit PURCHASE event
                     session_seq += 1
                     purchase_iso = matched_txn_dt.strftime("%Y-%m-%dT%H:%M:%SZ") if matched_txn_dt else end_iso
                     events.append({
@@ -259,18 +266,19 @@ def generate_events_from_tracks(
                         "visitor_id": vid,
                         "event_type": "PURCHASE",
                         "timestamp": purchase_iso,
-                        "zone_id": "BILLING",
+                        "zone_id": "CHECKOUT",
                         "dwell_ms": duration_ms,
                         "is_staff": is_staff,
                         "confidence": confidence,
                         "metadata": {
                             "queue_depth": other_active,
                             "sku_zone": None,
-                            "session_seq": session_seq
+                            "session_seq": session_seq,
+                            "purchase_method": "pos_correlation" if matched_txn_dt else "dwell_heuristic"
                         }
                     })
                 elif not is_staff:
-                    # If they leave without POS correlation and are not staff, they abandoned!
+                    # Short dwell at billing = abandoned queue
                     session_seq += 1
                     events.append({
                         "event_id": str(uuid.uuid4()),
@@ -279,7 +287,7 @@ def generate_events_from_tracks(
                         "visitor_id": vid,
                         "event_type": "BILLING_QUEUE_ABANDON",
                         "timestamp": end_iso,
-                        "zone_id": "BILLING",
+                        "zone_id": "CHECKOUT",
                         "dwell_ms": duration_ms,
                         "is_staff": is_staff,
                         "confidence": confidence,
@@ -300,11 +308,19 @@ def np_mean(vals: List[float]) -> float:
 
 
 def get_zone_mapping(cam_id: str) -> Tuple[str, str]:
-    if "cam_zone_01" in cam_id.lower() or "cam 1" in cam_id.lower():
-        return "SKINCARE", "MOISTURISER"
-    elif "cam_zone_02" in cam_id.lower() or "cam 2" in cam_id.lower():
-        return "HAIRCARE", "SHAMPOO"
-    return "COSMETICS", "LIPSTICK"
+    """Map camera ID to (zone_name, sku_category) for rich multi-zone heatmap."""
+    c = cam_id.lower()
+    if "zone_01" in c or "zone 01" in c or "cam 1" in c:
+        return "SKINCARE", "Moisturisers & Serums"
+    elif "zone_02" in c or "zone 02" in c or "cam 2" in c:
+        return "MAKEUP", "Foundation & Lipstick"
+    elif "zone_03" in c or "zone 03" in c or "cam 3" in c:
+        return "HAIRCARE", "Shampoo & Conditioner"
+    elif "zone_04" in c or "zone 04" in c or "cam 4" in c:
+        return "FRAGRANCE", "Perfumes & Deodorants"
+    elif "bill" in c:
+        return "CHECKOUT", "Billing Counter"
+    return "FRAGRANCE", "Perfumes & Deodorants"
 
 
 def normalize_existing_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
