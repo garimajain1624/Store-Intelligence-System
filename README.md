@@ -1,5 +1,6 @@
 # Store Intelligence System
 
+![Live Dashboard Screenshot](docs/dashboard_screenshot.png)
 Real-time computer vision retail analytics. Ingest events from CCTV cameras, track footfall, conversion funnels, billing queues, and zone heatmaps through a live dashboard.
 
 ## Architecture
